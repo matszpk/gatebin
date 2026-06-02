@@ -181,7 +181,11 @@ impl<W: Write> BinWriter<W> {
         if self.bits == 0 {
             let leb = value.to_le_bytes();
             writer.write_all(&leb[0..(bits as usize) >> 3])?;
-            self.byte = leb[(bits as usize) >> 3] & ((1 << (bits & 7)) - 1);
+            self.byte = if bits < 128 {
+                leb[(bits as usize) >> 3] & ((1 << (bits & 7)) - 1)
+            } else {
+                0
+            };
             self.bits = bits & 7;
         } else {
             let shift = 8 - self.bits;
@@ -515,6 +519,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_bin_writer() {
@@ -853,7 +858,7 @@ mod tests {
     fn test_read_write_circuit_helper(circuit: Circuit<u32>, msg: &str) {
         let mut data = vec![];
         write_circuit(&mut data, &circuit).unwrap();
-        println!("Written {}: {:?}", msg, data);
+        // println!("Written {}: {:?}", msg, data);
         let rd_circuit = read_circuit(data.as_slice()).unwrap();
         assert_eq!(circuit, rd_circuit, "{}", msg);
     }
@@ -864,6 +869,249 @@ mod tests {
         test_read_write_circuit_helper(
             Circuit::new(2, [Gate::new_and(0, 1)], [(2, false)]).unwrap(),
             "gate1",
+        );
+        test_read_write_circuit_helper(
+            Circuit::new(2, [Gate::new_nimpl(1, 0)], [(2, true)]).unwrap(),
+            "gate2",
+        );
+        test_read_write_circuit_helper(
+            Circuit::new(
+                3,
+                [
+                    Gate::new_xor(0, 1),
+                    Gate::new_xor(2, 3),
+                    Gate::new_nimpl(2, 3),
+                    Gate::new_and(0, 1),
+                    Gate::new_nor(5, 6),
+                ],
+                [(4, false), (7, true)],
+            )
+            .unwrap(),
+            "simple1",
+        );
+        test_read_write_circuit_helper(
+            Circuit::new(
+                6,
+                [
+                    Gate::new_and(0, 1),
+                    Gate::new_and(2, 3),
+                    Gate::new_nor(7, 4),
+                    Gate::new_xor(6, 2),
+                    Gate::new_and(8, 6),
+                    Gate::new_and(10, 7),
+                    Gate::new_nor(5, 1),
+                    Gate::new_nimpl(9, 12),
+                    Gate::new_nimpl(11, 5),
+                    Gate::new_and(0, 1),
+                    Gate::new_nimpl(2, 3),
+                    Gate::new_nimpl(16, 4),
+                    Gate::new_nor(15, 2),
+                    Gate::new_and(17, 15),
+                    Gate::new_xor(19, 16),
+                    Gate::new_nor(5, 1),
+                    Gate::new_nimpl(18, 21),
+                    Gate::new_nimpl(20, 5),
+                    Gate::new_xor(10, 18),
+                    Gate::new_xor(9, 19),
+                    Gate::new_xor(13, 23),
+                    Gate::new_xor(14, 22),
+                    Gate::new_nor(24, 25),
+                    Gate::new_and(26, 28),
+                    Gate::new_and(27, 29),
+                ],
+                [(30, false)],
+            )
+            .unwrap(),
+            "complex1",
+        );
+        test_read_write_circuit_helper(
+            Circuit::from_str(
+                r##"{
+        0
+        1
+        2
+        3
+        4
+        5
+        6
+        7
+        8
+        9
+        10
+        11
+        and(0,6):0
+        and(0,7)
+        and(1,6)
+        xor(13,14):1
+        and(0,8)
+        and(1,7)
+        and(2,6)
+        xor(17,18)
+        xor(16,19)
+        and(13,14)
+        xor(20,21):2
+        and(0,9)
+        and(1,8)
+        xor(23,24)
+        and(2,7)
+        and(3,6)
+        xor(26,27)
+        xor(25,28)
+        and(17,18)
+        xor(29,30)
+        and(20,21)
+        and(16,19)
+        nor(32,33)
+        xor(31,34):3n
+        and(0,10)
+        and(1,9)
+        and(2,8)
+        xor(37,38)
+        and(3,7)
+        and(4,6)
+        xor(40,41)
+        xor(39,42)
+        xor(36,43)
+        and(26,27)
+        xor(44,45)
+        and(25,28)
+        and(23,24)
+        nor(47,48)
+        xor(46,49)
+        nimpl(31,34)
+        and(29,30)
+        nor(51,52)
+        xor(50,53):4
+        and(0,11)
+        and(1,10)
+        and(2,9)
+        xor(56,57)
+        and(3,8)
+        xor(58,59)
+        and(4,7)
+        and(5,6)
+        xor(61,62)
+        xor(60,63)
+        and(40,41)
+        xor(64,65)
+        xor(55,66)
+        and(39,42)
+        and(37,38)
+        nor(68,69)
+        xor(67,70)
+        and(44,45)
+        and(36,43)
+        nor(72,73)
+        xor(71,74)
+        nor(50,53)
+        nimpl(46,49)
+        nor(76,77)
+        xor(75,78):5n
+        and(1,11)
+        and(2,10)
+        xor(80,81)
+        and(3,9)
+        xor(82,83)
+        and(4,8)
+        and(5,7)
+        xor(85,86)
+        and(58,59)
+        and(56,57)
+        nor(88,89)
+        xor(87,90)
+        and(61,62)
+        xor(91,92)
+        xor(84,93)
+        and(64,65)
+        and(60,63)
+        nor(95,96)
+        xor(94,97)
+        nimpl(67,70)
+        and(55,66)
+        nor(99,100)
+        xor(98,101)
+        nimpl(75,78)
+        nor(71,74)
+        nor(103,104)
+        xor(102,105):6
+        and(2,11)
+        and(3,10)
+        and(4,9)
+        xor(108,109)
+        and(5,8)
+        xor(110,111)
+        and(82,83)
+        and(80,81)
+        nor(113,114)
+        xor(112,115)
+        and(85,86)
+        xor(116,117)
+        xor(107,118)
+        nimpl(92,91)
+        nimpl(87,90)
+        nor(120,121)
+        xor(119,122)
+        nor(94,97)
+        nimpl(84,93)
+        nor(124,125)
+        xor(123,126)
+        nor(102,105)
+        nimpl(98,101)
+        nor(128,129)
+        xor(127,130):7
+        and(3,11)
+        and(4,10)
+        and(5,9)
+        xor(133,134)
+        and(110,111)
+        and(108,109)
+        nor(136,137)
+        xor(135,138)
+        xor(132,139)
+        nimpl(117,116)
+        nimpl(112,115)
+        nor(141,142)
+        xor(140,143)
+        nor(119,122)
+        nimpl(107,118)
+        nor(145,146)
+        xor(144,147)
+        nor(127,130)
+        nimpl(123,126)
+        nor(149,150)
+        xor(148,151):8
+        and(4,11)
+        and(5,10)
+        xor(153,154)
+        nimpl(135,138)
+        and(133,134)
+        nor(156,157)
+        xor(155,158)
+        nor(140,143)
+        nimpl(132,139)
+        nor(160,161)
+        xor(159,162)
+        nor(148,151)
+        nimpl(144,147)
+        nor(164,165)
+        xor(163,166):9n
+        and(5,11)
+        nimpl(155,158)
+        and(153,154)
+        nor(169,170)
+        xor(168,171)
+        nimpl(163,166)
+        nor(159,162)
+        nor(173,174)
+        xor(172,175):10
+        nor(172,175)
+        nimpl(168,171)
+        nor(177,178):11n
+    }(12)
+"##,
+            )
+            .unwrap(),
+            "complex2",
         );
     }
 }
