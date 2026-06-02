@@ -858,7 +858,7 @@ mod tests {
     fn test_read_write_circuit_helper(circuit: Circuit<u32>, msg: &str) {
         let mut data = vec![];
         write_circuit(&mut data, &circuit).unwrap();
-        // println!("Written {}: {:?}", msg, data);
+        // println!("Written {}: {} {:?}", msg, data.len(), data);
         let rd_circuit = read_circuit(data.as_slice()).unwrap();
         assert_eq!(circuit, rd_circuit, "{}", msg);
     }
