@@ -416,6 +416,7 @@ where
         let o_u = total_wire_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
         *o = T::try_from(o_u).unwrap();
     }
+    binrd.inner()?;
     let input_len = T::try_from(input_len_u).unwrap();
     Circuit::new(input_len, gates, outputs).ok_or(ReadCircuitError::Verify)
 }
@@ -495,6 +496,7 @@ where
         let o_u = usize::try_from(*o).unwrap();
         write_cut_enc_usize(&mut binwr, total_wire_num - o_u - 1, max_bits)?;
     }
+    binwr.inner()?;
     Ok(())
 }
 
@@ -845,6 +847,23 @@ mod tests {
         assert_eq!(
             (vec![81 | 128, 78 | 128, 13], 5),
             write_cut_enc_usize_helper(81 + (78 << 7) + (13 << 14), 19)
+        );
+    }
+
+    fn test_read_write_circuit_helper(circuit: Circuit<u32>, msg: &str) {
+        let mut data = vec![];
+        write_circuit(&mut data, &circuit).unwrap();
+        println!("Written {}: {:?}", msg, data);
+        let rd_circuit = read_circuit(data.as_slice()).unwrap();
+        assert_eq!(circuit, rd_circuit, "{}", msg);
+    }
+
+    #[test]
+    fn test_read_write_circuit() {
+        test_read_write_circuit_helper(Circuit::new(0, [], []).unwrap(), "empty");
+        test_read_write_circuit_helper(
+            Circuit::new(2, [Gate::new_and(0, 1)], [(2, false)]).unwrap(),
+            "gate1",
         );
     }
 }
