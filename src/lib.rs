@@ -1,3 +1,4 @@
+use gate_calc_log_bits::calc_log_bits;
 use gatesim::{Circuit, Gate, GateFunc};
 
 // LE128 - encoding:
@@ -339,6 +340,174 @@ fn write_cut_enc_usize<W: Write>(
         bits += max_bits - (len * 7);
     }
     wr.write_bits(bits, b)
+}
+
+//
+
+#[derive(Debug, thiserror::Error)]
+pub enum ReadCircuitError {
+    #[error("IO {0}")]
+    IO(#[from] io::Error),
+    #[error("EncInt {0}")]
+    EncInt(#[from] ReadEncIntError),
+    #[error("Bad header")]
+    BadHeader,
+    #[error("Verify")]
+    Verify,
+}
+
+fn read_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
+where
+    T: Default + Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+{
+    let input_len_u = read_enc_usize(&mut rd)?;
+    let circuit_len_u = read_enc_usize(&mut rd)?;
+    let output_len_u = read_enc_usize(&mut rd)?;
+    // read gates func
+    let mut binrd = BinReader::new(rd);
+    let mut gates = vec![Gate::new_and(T::default(), T::default()); circuit_len_u];
+    for gchunk in gates.chunks_mut(64) {
+        let max_bits = u8::try_from(gchunk.len() << 1).unwrap();
+        let gfunc_bits = binrd.read_bits(max_bits)?;
+        for (i, gi) in gchunk.iter_mut().enumerate() {
+            gi.func = match (gfunc_bits >> (i << 1)) & 3 {
+                0 => GateFunc::And,
+                1 => GateFunc::Nor,
+                2 => GateFunc::Nimpl,
+                3 => GateFunc::Xor,
+                _ => {
+                    panic!("Unexpected!");
+                }
+            };
+        }
+    }
+    let rd = binrd.inner()?;
+    // read output negations
+    let mut binrd = BinReader::new(rd);
+    let mut outputs = vec![(T::default(), false); output_len_u];
+    for ochunk in outputs.chunks_mut(128) {
+        let max_bits = u8::try_from(ochunk.len()).unwrap();
+        let neg_bits = binrd.read_bits(max_bits)?;
+        for (i, (_, on)) in ochunk.iter_mut().enumerate() {
+            *on = ((neg_bits >> i) & 1) != 0;
+        }
+    }
+    let rd = binrd.inner()?;
+    // read gate wires
+    let mut binrd = BinReader::new(rd);
+    for (gi, gate) in gates.iter_mut().enumerate() {
+        let wi = gi + input_len_u;
+        let max_bits = u8::try_from(calc_log_bits(wi)).unwrap();
+        let gi0 = wi - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
+        let gi1 = wi - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
+        gate.i0 = T::try_from(gi0).unwrap();
+        gate.i1 = T::try_from(gi1).unwrap();
+    }
+    let rd = binrd.inner()?;
+    // read output wires
+    let mut binrd = BinReader::new(rd);
+    let total_wire_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    for (o, _n) in outputs.iter_mut() {
+        let o_u = total_wire_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
+        *o = T::try_from(o_u).unwrap();
+    }
+    let input_len = T::try_from(input_len_u).unwrap();
+    Circuit::new(input_len, gates, outputs).ok_or(ReadCircuitError::Verify)
+}
+
+pub fn read_circuit<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
+where
+    T: Default + Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+{
+    let mut header = [0u8; 5];
+    rd.read_exact(&mut header)?;
+    if header != [0x47, 0x41, 0x54, 0x42, 0x00] {
+        return Err(ReadCircuitError::BadHeader);
+    }
+    read_circuit_int(rd)
+}
+
+//
+
+fn write_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
+where
+    T: Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+{
+    let input_len_u = usize::try_from(circuit.input_len()).unwrap();
+    let circuit_len_u = circuit.len();
+    let output_len_u = circuit.outputs().len();
+    write_enc_usize(&mut wr, input_len_u)?;
+    write_enc_usize(&mut wr, circuit_len_u)?;
+    write_enc_usize(&mut wr, output_len_u)?;
+    // write gate funcs
+    let mut binwr = BinWriter::new(wr);
+    for gchunk in circuit.gates().chunks(64) {
+        let gvalue = gchunk.into_iter().enumerate().fold(0u128, |a, (gi, g)| {
+            a | ((match g.func {
+                GateFunc::And => 0u128,
+                GateFunc::Nor => 1u128,
+                GateFunc::Nimpl => 2u128,
+                GateFunc::Xor => 3u128,
+            }) << (gi << 1))
+        });
+        binwr.write_bits(u8::try_from(gchunk.len() << 1).unwrap(), gvalue)?;
+    }
+    let wr = binwr.inner()?;
+    // write output negations
+    let mut binwr = BinWriter::new(wr);
+    for ochunk in circuit.outputs().chunks(128) {
+        let nvalue = ochunk
+            .into_iter()
+            .enumerate()
+            .fold(0u128, |a, (oi, (_, n))| a | (u128::from(*n) << oi));
+        binwr.write_bits(u8::try_from(ochunk.len()).unwrap(), nvalue)?;
+    }
+    let wr = binwr.inner()?;
+    // write gate wires (arguments)
+    let mut binwr = BinWriter::new(wr);
+    for (gi, gate) in circuit.gates().into_iter().enumerate() {
+        let wi = gi + input_len_u;
+        let max_bits = u8::try_from(calc_log_bits(wi)).unwrap();
+        let gi0 = usize::try_from(gate.i0).unwrap();
+        let gi1 = usize::try_from(gate.i1).unwrap();
+        write_cut_enc_usize(&mut binwr, wi - gi0 - 1, max_bits)?;
+        write_cut_enc_usize(&mut binwr, wi - gi1 - 1, max_bits)?;
+    }
+    let wr = binwr.inner()?;
+    // write outputs wire indices
+    let mut binwr = BinWriter::new(wr);
+    let total_wire_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    for (o, _) in circuit.outputs() {
+        let o_u = usize::try_from(*o).unwrap();
+        write_cut_enc_usize(&mut binwr, total_wire_num - o_u - 1, max_bits)?;
+    }
+    Ok(())
+}
+
+pub fn write_circuit<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
+where
+    T: Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+{
+    wr.write(&[0x47, 0x41, 0x54, 0x42, 0x00])?;
+    write_circuit_int(wr, circuit)
 }
 
 #[cfg(test)]
