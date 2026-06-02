@@ -1458,5 +1458,9 @@ mod tests {
             .unwrap(),
             "complex3",
         );
+        test_read_write_circuit_helper(
+            Circuit::from_str(include_str!("sha256.circuit")).unwrap(),
+            "sha256",
+        );
     }
 }
