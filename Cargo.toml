@@ -2,6 +2,7 @@
 name = "gatebin"
 version = "0.1.0"
 edition = "2024"
+description = "The Gate binary format"
 
 [dependencies]
 gate_calc_log_bits = "0.1.0"
