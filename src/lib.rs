@@ -239,7 +239,7 @@ pub enum ReadEncIntError {
     PosOverflow,
 }
 
-fn read_enc_usize<R: Read>(mut rd: R) -> Result<usize, ReadEncIntError> {
+pub fn read_enc_usize<R: Read>(mut rd: R) -> Result<usize, ReadEncIntError> {
     const UBITS: u32 = usize::BITS;
     let mut d = 0;
     let mut bitpos = 0;
@@ -267,7 +267,7 @@ fn read_enc_usize<R: Read>(mut rd: R) -> Result<usize, ReadEncIntError> {
     Ok(d)
 }
 
-fn write_enc_usize<W: Write>(mut wr: W, value: usize) -> Result<(), io::Error> {
+pub fn write_enc_usize<W: Write>(mut wr: W, value: usize) -> Result<(), io::Error> {
     let mut d = value;
     let mut b = [0u8; 10];
     // start writing
@@ -287,7 +287,7 @@ fn write_enc_usize<W: Write>(mut wr: W, value: usize) -> Result<(), io::Error> {
 
 // cut read enc usize
 
-fn read_cut_enc_usize<R: Read>(
+pub fn read_cut_enc_usize<R: Read>(
     rd: &mut BinReader<R>,
     max_bits: u8,
 ) -> Result<usize, ReadEncIntError> {
@@ -313,7 +313,7 @@ fn read_cut_enc_usize<R: Read>(
     Ok(d)
 }
 
-fn write_cut_enc_usize<W: Write>(
+pub fn write_cut_enc_usize<W: Write>(
     wr: &mut BinWriter<W>,
     value: usize,
     max_bits: u8,
@@ -360,7 +360,7 @@ pub enum ReadCircuitError {
     Verify,
 }
 
-fn read_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
+pub fn read_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
     usize: TryFrom<T>,
@@ -443,7 +443,7 @@ where
 
 //
 
-fn write_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
+pub fn write_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
     T: Clone + Copy + Ord,
     usize: TryFrom<T>,
