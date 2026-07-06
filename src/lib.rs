@@ -229,6 +229,12 @@ impl<W: Write> BinWriter<W> {
     }
 }
 
+impl<W: Write> Drop for BinWriter<W> {
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
 // other read writes
 
 #[derive(Debug, thiserror::Error)]
