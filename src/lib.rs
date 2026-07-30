@@ -291,6 +291,52 @@ pub fn write_enc_usize<W: Write>(mut wr: W, value: usize) -> Result<(), io::Erro
     wr.write_all(&b[0..len])
 }
 
+pub fn read_enc_u64<R: Read>(mut rd: R) -> Result<u64, ReadEncIntError> {
+    const UBITS: u32 = u64::BITS;
+    let mut d = 0;
+    let mut bitpos = 0;
+    let mut b = [0u8];
+    loop {
+        rd.read_exact(&mut b)?;
+        let bv = b[0] & 0x7f;
+        let bend = (b[0] & 0x80) == 0;
+        if (bitpos >= UBITS && bv != 0)
+            || (bitpos + 7 > UBITS && ((bv & !((1u8 << (UBITS - bitpos)) - 1)) != 0))
+        {
+            return Err(ReadEncIntError::PosOverflow);
+        }
+        if bitpos < UBITS {
+            d |= (bv as u64) << bitpos;
+        }
+        if bend {
+            break;
+        }
+        bitpos += 7;
+        if bitpos >= UBITS {
+            bitpos = UBITS; // stop at this position
+        }
+    }
+    Ok(d)
+}
+
+pub fn write_enc_u64<W: Write>(mut wr: W, value: u64) -> Result<(), io::Error> {
+    let mut d = value;
+    let mut b = [0u8; 10];
+    // start writing
+    let mut len = 0;
+    let bcont = d >= 128;
+    b[len] = ((d & 127) as u8) | (u8::from(bcont) << 7);
+    len += 1;
+    d >>= 7;
+    while d != 0 {
+        let bcont = d >= 128;
+        b[len] = ((d & 127) as u8) | (u8::from(bcont) << 7);
+        len += 1;
+        d >>= 7;
+    }
+    wr.write_all(&b[0..len])
+}
+
 // cut read enc usize
 
 pub fn read_cut_enc_usize<R: Read>(
