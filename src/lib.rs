@@ -571,6 +571,164 @@ where
     write_circuit_int(wr, circuit)
 }
 
+//
+
+pub fn read_fast_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
+where
+    T: Default + Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+    T: TryFrom<u128>,
+    <T as TryFrom<u128>>::Error: Debug,
+{
+    let input_len_u = read_enc_usize(&mut rd)?;
+    let circuit_len_u = read_enc_usize(&mut rd)?;
+    let output_len_u = read_enc_usize(&mut rd)?;
+    // read gates func
+    let mut binrd = BinReader::new(rd);
+    let mut gates = vec![Gate::new_and(T::default(), T::default()); circuit_len_u];
+    for gchunk in gates.chunks_mut(64) {
+        let max_bits = u8::try_from(gchunk.len() << 1).unwrap();
+        let gfunc_bits = binrd.read_bits(max_bits)?;
+        for (i, gi) in gchunk.iter_mut().enumerate() {
+            gi.func = match (gfunc_bits >> (i << 1)) & 3 {
+                0 => GateFunc::And,
+                1 => GateFunc::Nor,
+                2 => GateFunc::Nimpl,
+                3 => GateFunc::Xor,
+                _ => {
+                    panic!("Unexpected!");
+                }
+            };
+        }
+    }
+    let rd = binrd.inner()?;
+    // read output negations
+    let mut binrd = BinReader::new(rd);
+    let mut outputs = vec![(T::default(), false); output_len_u];
+    for ochunk in outputs.chunks_mut(128) {
+        let max_bits = u8::try_from(ochunk.len()).unwrap();
+        let neg_bits = binrd.read_bits(max_bits)?;
+        for (i, (_, on)) in ochunk.iter_mut().enumerate() {
+            *on = ((neg_bits >> i) & 1) != 0;
+        }
+    }
+    let rd = binrd.inner()?;
+    // read gate wires
+    let total_wire_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    let mut binrd = BinReader::new(rd);
+    for gate in &mut gates {
+        gate.i0 = T::try_from(binrd.read_bits(max_bits)?).unwrap();
+        gate.i1 = T::try_from(binrd.read_bits(max_bits)?).unwrap();
+    }
+    let rd = binrd.inner()?;
+    // read output wires
+    let mut binrd = BinReader::new(rd);
+    for (o, _n) in outputs.iter_mut() {
+        let o_u = total_wire_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
+        *o = T::try_from(o_u).unwrap();
+    }
+    binrd.inner()?;
+    let input_len = T::try_from(input_len_u).unwrap();
+    Circuit::new(input_len, gates, outputs).ok_or(ReadCircuitError::Verify)
+}
+
+pub fn read_fast_circuit<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
+where
+    T: Default + Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+    T: TryFrom<u128>,
+    <T as TryFrom<u128>>::Error: Debug,
+{
+    let mut header = [0u8; 5];
+    rd.read_exact(&mut header)?;
+    if header != [0x47, 0x41, 0x54, 0x42, 0x01] {
+        return Err(ReadCircuitError::BadHeader);
+    }
+    read_fast_circuit_int(rd)
+}
+
+//
+
+pub fn write_fast_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
+where
+    T: Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    u128: TryFrom<T>,
+    <u128 as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+{
+    let input_len_u = usize::try_from(circuit.input_len()).unwrap();
+    let circuit_len_u = circuit.len();
+    let output_len_u = circuit.outputs().len();
+    write_enc_usize(&mut wr, input_len_u)?;
+    write_enc_usize(&mut wr, circuit_len_u)?;
+    write_enc_usize(&mut wr, output_len_u)?;
+    // write gate funcs
+    let mut binwr = BinWriter::new(wr);
+    for gchunk in circuit.gates().chunks(64) {
+        let gvalue = gchunk.into_iter().enumerate().fold(0u128, |a, (gi, g)| {
+            a | ((match g.func {
+                GateFunc::And => 0u128,
+                GateFunc::Nor => 1u128,
+                GateFunc::Nimpl => 2u128,
+                GateFunc::Xor => 3u128,
+            }) << (gi << 1))
+        });
+        binwr.write_bits(u8::try_from(gchunk.len() << 1).unwrap(), gvalue)?;
+    }
+    let wr = binwr.inner()?;
+    // write output negations
+    let mut binwr = BinWriter::new(wr);
+    for ochunk in circuit.outputs().chunks(128) {
+        let nvalue = ochunk
+            .into_iter()
+            .enumerate()
+            .fold(0u128, |a, (oi, (_, n))| a | (u128::from(*n) << oi));
+        binwr.write_bits(u8::try_from(ochunk.len()).unwrap(), nvalue)?;
+    }
+    let total_wire_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    let wr = binwr.inner()?;
+    // write gate wires (arguments)
+    let mut binwr = BinWriter::new(wr);
+    for gate in circuit.gates() {
+        binwr.write_bits(max_bits, u128::try_from(gate.i0).unwrap())?;
+        binwr.write_bits(max_bits, u128::try_from(gate.i1).unwrap())?;
+    }
+    let wr = binwr.inner()?;
+    // write outputs wire indices
+    let mut binwr = BinWriter::new(wr);
+    for (o, _) in circuit.outputs() {
+        let o_u = usize::try_from(*o).unwrap();
+        write_cut_enc_usize(&mut binwr, total_wire_num - o_u - 1, max_bits)?;
+    }
+    binwr.inner()?;
+    Ok(())
+}
+
+pub fn write_fast_circuit<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
+where
+    T: Clone + Copy + Ord,
+    usize: TryFrom<T>,
+    <usize as TryFrom<T>>::Error: Debug,
+    u128: TryFrom<T>,
+    <u128 as TryFrom<T>>::Error: Debug,
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: Debug,
+{
+    wr.write(&[0x47, 0x41, 0x54, 0x42, 0x01])?;
+    write_fast_circuit_int(wr, circuit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1516,6 +1674,77 @@ mod tests {
         test_read_write_circuit_helper(
             Circuit::from_str(include_str!("sha256.circuit")).unwrap(),
             "sha256",
+        );
+    }
+
+    fn test_read_write_fast_circuit_helper(circuit: Circuit<u32>, msg: &str) {
+        let mut data = vec![];
+        write_fast_circuit(&mut data, &circuit).unwrap();
+        // println!("Written {}: {} {:?}", msg, data.len(), data);
+        let rd_circuit = read_fast_circuit(data.as_slice()).unwrap();
+        assert_eq!(circuit, rd_circuit, "{}", msg);
+    }
+
+    #[test]
+    fn test_read_write_fast_circuit() {
+        test_read_write_fast_circuit_helper(Circuit::new(0, [], []).unwrap(), "empty");
+        test_read_write_fast_circuit_helper(
+            Circuit::new(2, [Gate::new_and(0, 1)], [(2, false)]).unwrap(),
+            "gate1",
+        );
+        test_read_write_fast_circuit_helper(
+            Circuit::new(2, [Gate::new_nimpl(1, 0)], [(2, true)]).unwrap(),
+            "gate2",
+        );
+        test_read_write_fast_circuit_helper(
+            Circuit::new(
+                3,
+                [
+                    Gate::new_xor(0, 1),
+                    Gate::new_xor(2, 3),
+                    Gate::new_nimpl(2, 3),
+                    Gate::new_and(0, 1),
+                    Gate::new_nor(5, 6),
+                ],
+                [(4, false), (7, true)],
+            )
+            .unwrap(),
+            "simple1",
+        );
+        test_read_write_fast_circuit_helper(
+            Circuit::new(
+                6,
+                [
+                    Gate::new_and(0, 1),
+                    Gate::new_and(2, 3),
+                    Gate::new_nor(7, 4),
+                    Gate::new_xor(6, 2),
+                    Gate::new_and(8, 6),
+                    Gate::new_and(10, 7),
+                    Gate::new_nor(5, 1),
+                    Gate::new_nimpl(9, 12),
+                    Gate::new_nimpl(11, 5),
+                    Gate::new_and(0, 1),
+                    Gate::new_nimpl(2, 3),
+                    Gate::new_nimpl(16, 4),
+                    Gate::new_nor(15, 2),
+                    Gate::new_and(17, 15),
+                    Gate::new_xor(19, 16),
+                    Gate::new_nor(5, 1),
+                    Gate::new_nimpl(18, 21),
+                    Gate::new_nimpl(20, 5),
+                    Gate::new_xor(10, 18),
+                    Gate::new_xor(9, 19),
+                    Gate::new_xor(13, 23),
+                    Gate::new_xor(14, 22),
+                    Gate::new_nor(24, 25),
+                    Gate::new_and(26, 28),
+                    Gate::new_and(27, 29),
+                ],
+                [(30, false)],
+            )
+            .unwrap(),
+            "complex1",
         );
     }
 }
