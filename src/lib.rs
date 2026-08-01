@@ -32,9 +32,6 @@ use gatesim::{Circuit, Gate, GateFunc};
 //   Wire index stored as total_wire_num - 1 - wire_index, where total_wire_num is
 //   total number of wires including gates.
 
-// TODO: Write fast version of format:
-// faster reading and writing by using constant bit length for gate arguments.
-
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 
