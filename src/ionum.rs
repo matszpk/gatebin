@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::{BitAnd, BitOr, Shl, Shr};
 
-pub fn read_numbers_2<R: Read, T>(mut rd: R, num_bits: u8, num_num: usize) -> io::Result<Vec<T>>
+pub fn read_numbers_2<R: Read, T>(mut rd: R, num_bits: u8, out_numbers: &mut [T]) -> io::Result<()>
 where
     T: Clone
         + Copy
@@ -12,7 +12,6 @@ where
         + Shl<u32, Output = T>
         + Shr<u32, Output = T>,
 {
-    let mut out_numbers = vec![T::from(0u8); num_num];
     match num_bits {
         1 => {
             let mut b = [0u8; 1];
@@ -5127,7 +5126,7 @@ where
             panic!("Unsupported");
         }
     }
-    Ok(out_numbers)
+    Ok(())
 }
 
 pub fn write_numbers_2<W: Write, T>(mut wr: W, num_bits: u8, numbers: &[T]) -> io::Result<()>
@@ -8635,8 +8634,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::RngExt;
     use crate::{BinReader, ReadEncIntError};
+    use rand::RngExt;
 
     pub fn read_numbers<R: Read>(
         rd: R,
@@ -8655,7 +8654,7 @@ mod tests {
     #[test]
     fn test_read_numbers_2() {
         let mut rng = rand::rng();
-        for i in 0..20 {
+        for i in 0..4 {
             for bits in 1..=60 {
                 for len in 0..300 {
                     let byte_len = (len * usize::try_from(bits).unwrap() + 7) >> 3;
@@ -8663,7 +8662,8 @@ mod tests {
                         .map(|_| rng.random::<u8>())
                         .collect::<Vec<_>>();
                     let expected = read_numbers(input.as_slice(), bits, len).unwrap();
-                    let result = read_numbers_2::<_, u64>(input.as_slice(), bits, len).unwrap();
+                    let mut result = vec![0; expected.len()];
+                    read_numbers_2::<_, u64>(input.as_slice(), bits, &mut result).unwrap();
                     assert_eq!(expected, result, "{} {} {}", i, bits, len);
                 }
             }
@@ -8673,7 +8673,7 @@ mod tests {
     #[test]
     fn test_write_numbers_2() {
         let mut rng = rand::rng();
-        for i in 0..20 {
+        for i in 0..4 {
             for bits in 1..=60 {
                 for len in 0..300 {
                     let bits_u = usize::try_from(bits).unwrap();

@@ -1,5 +1,6 @@
 use gate_calc_log_bits::calc_log_bits;
 use gatesim::{Circuit, Gate, GateFunc};
+use std::ops::{BitAnd, BitOr, Shl, Shr};
 
 // LE128 - encoding:
 //
@@ -36,6 +37,7 @@ use std::fmt::Debug;
 use std::io::{self, Read, Write};
 
 pub mod ionum;
+use ionum::*;
 
 #[derive(Debug)]
 pub struct BinReader<R: Read> {
@@ -572,15 +574,36 @@ where
 
 //
 
+pub fn numbers_to_gate<T: Clone + Copy>(numbers: &[T], out: &mut [Gate<T>]) {
+    assert_eq!(numbers.len(), out.len().checked_mul(2).unwrap());
+    for (nums, gate) in numbers.chunks(2).zip(out.iter_mut()) {
+        gate.i0 = nums[0];
+        gate.i1 = nums[1];
+    }
+}
+
+pub fn gate_to_numbers<T: Clone + Copy>(gates: &[Gate<T>], numbers: &mut [T]) {
+    assert_eq!(numbers.len(), gates.len().checked_mul(2).unwrap());
+    for (nums, gate) in numbers.chunks_mut(2).zip(gates.iter()) {
+        nums[0] = gate.i0;
+        nums[1] = gate.i1;
+    }
+}
+
+const GATE_BUF_LEN: usize = 8192;
+
 pub fn read_fast_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
+    T: From<u8>
+        + BitAnd<Output = T>
+        + BitOr<Output = T>
+        + Shl<u32, Output = T>
+        + Shr<u32, Output = T>,
     usize: TryFrom<T>,
     <usize as TryFrom<T>>::Error: Debug,
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: Debug,
-    T: TryFrom<u128>,
-    <T as TryFrom<u128>>::Error: Debug,
 {
     let input_len_u = read_enc_usize(&mut rd)?;
     let circuit_len_u = read_enc_usize(&mut rd)?;
@@ -614,16 +637,18 @@ where
             *on = ((neg_bits >> i) & 1) != 0;
         }
     }
-    let rd = binrd.inner()?;
+    let mut rd = binrd.inner()?;
     // read gate wires
     let total_wire_num = input_len_u + circuit_len_u;
     let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
-    let mut binrd = BinReader::new(rd);
-    for gate in &mut gates {
-        gate.i0 = T::try_from(binrd.read_bits(max_bits)?).unwrap();
-        gate.i1 = T::try_from(binrd.read_bits(max_bits)?).unwrap();
+    {
+        let mut numbers = vec![T::default(); 2 * GATE_BUF_LEN];
+        for gchunk in gates.chunks_mut(GATE_BUF_LEN) {
+            let gchunk_len = gchunk.len();
+            read_numbers_2(&mut rd, max_bits, &mut numbers[0..2 * gchunk_len])?;
+            numbers_to_gate(&numbers[0..2 * gchunk_len], gchunk);
+        }
     }
-    let rd = binrd.inner()?;
     // read output wires
     let mut binrd = BinReader::new(rd);
     for (o, _n) in outputs.iter_mut() {
@@ -638,12 +663,15 @@ where
 pub fn read_fast_circuit<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
+    T: From<u8>
+        + BitAnd<Output = T>
+        + BitOr<Output = T>
+        + Shl<u32, Output = T>
+        + Shr<u32, Output = T>,
     usize: TryFrom<T>,
     <usize as TryFrom<T>>::Error: Debug,
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: Debug,
-    T: TryFrom<u128>,
-    <T as TryFrom<u128>>::Error: Debug,
 {
     let mut header = [0u8; 5];
     rd.read_exact(&mut header)?;
@@ -657,11 +685,18 @@ where
 
 pub fn write_fast_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
-    T: Clone + Copy + Ord,
+    T: Default + Clone + Copy + Ord,
+    T: From<u8>
+        + BitAnd<Output = T>
+        + BitOr<Output = T>
+        + Shl<u32, Output = T>
+        + Shr<u32, Output = T>,
+    u8: TryFrom<usize>,
+    <u8 as TryFrom<usize>>::Error: Debug,
+    u8: TryFrom<T>,
+    <u8 as TryFrom<T>>::Error: Debug,
     usize: TryFrom<T>,
     <usize as TryFrom<T>>::Error: Debug,
-    u128: TryFrom<T>,
-    <u128 as TryFrom<T>>::Error: Debug,
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: Debug,
 {
@@ -696,14 +731,16 @@ where
     }
     let total_wire_num = input_len_u + circuit_len_u;
     let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
-    let wr = binwr.inner()?;
+    let mut wr = binwr.inner()?;
     // write gate wires (arguments)
-    let mut binwr = BinWriter::new(wr);
-    for gate in circuit.gates() {
-        binwr.write_bits(max_bits, u128::try_from(gate.i0).unwrap())?;
-        binwr.write_bits(max_bits, u128::try_from(gate.i1).unwrap())?;
+    {
+        let mut numbers = vec![T::default(); 2 * GATE_BUF_LEN];
+        for gchunk in circuit.gates().chunks(GATE_BUF_LEN) {
+            let gchunk_len = gchunk.len();
+            gate_to_numbers(gchunk, &mut numbers[0..2 * gchunk_len]);
+            write_numbers_2(&mut wr, max_bits, &numbers[0..2 * gchunk_len])?;
+        }
     }
-    let wr = binwr.inner()?;
     // write outputs wire indices
     let mut binwr = BinWriter::new(wr);
     for (o, _) in circuit.outputs() {
@@ -716,11 +753,18 @@ where
 
 pub fn write_fast_circuit<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
-    T: Clone + Copy + Ord,
+    T: Default + Clone + Copy + Ord,
+    T: From<u8>
+        + BitAnd<Output = T>
+        + BitOr<Output = T>
+        + Shl<u32, Output = T>
+        + Shr<u32, Output = T>,
+    u8: TryFrom<usize>,
+    <u8 as TryFrom<usize>>::Error: Debug,
+    u8: TryFrom<T>,
+    <u8 as TryFrom<T>>::Error: Debug,
     usize: TryFrom<T>,
     <usize as TryFrom<T>>::Error: Debug,
-    u128: TryFrom<T>,
-    <u128 as TryFrom<T>>::Error: Debug,
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: Debug,
 {
