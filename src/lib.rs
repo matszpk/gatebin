@@ -35,6 +35,8 @@ use gatesim::{Circuit, Gate, GateFunc};
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 
+pub mod ionum;
+
 #[derive(Debug)]
 pub struct BinReader<R: Read> {
     reader: R,
