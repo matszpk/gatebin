@@ -574,7 +574,7 @@ where
 
 //
 
-pub fn numbers_to_gate<T: Clone + Copy>(numbers: &[T], out: &mut [Gate<T>]) {
+pub fn numbers_to_gates<T: Clone + Copy>(numbers: &[T], out: &mut [Gate<T>]) {
     assert_eq!(numbers.len(), out.len().checked_mul(2).unwrap());
     for (nums, gate) in numbers.chunks(2).zip(out.iter_mut()) {
         gate.i0 = nums[0];
@@ -582,7 +582,7 @@ pub fn numbers_to_gate<T: Clone + Copy>(numbers: &[T], out: &mut [Gate<T>]) {
     }
 }
 
-pub fn gate_to_numbers<T: Clone + Copy>(gates: &[Gate<T>], numbers: &mut [T]) {
+pub fn gates_to_numbers<T: Clone + Copy>(gates: &[Gate<T>], numbers: &mut [T]) {
     assert_eq!(numbers.len(), gates.len().checked_mul(2).unwrap());
     for (nums, gate) in numbers.chunks_mut(2).zip(gates.iter()) {
         nums[0] = gate.i0;
@@ -646,7 +646,7 @@ where
         for gchunk in gates.chunks_mut(GATE_BUF_LEN) {
             let gchunk_len = gchunk.len();
             read_numbers_2(&mut rd, max_bits, &mut numbers[0..2 * gchunk_len])?;
-            numbers_to_gate(&numbers[0..2 * gchunk_len], gchunk);
+            numbers_to_gates(&numbers[0..2 * gchunk_len], gchunk);
         }
     }
     // read output wires
@@ -737,7 +737,7 @@ where
         let mut numbers = vec![T::default(); 2 * GATE_BUF_LEN];
         for gchunk in circuit.gates().chunks(GATE_BUF_LEN) {
             let gchunk_len = gchunk.len();
-            gate_to_numbers(gchunk, &mut numbers[0..2 * gchunk_len]);
+            gates_to_numbers(gchunk, &mut numbers[0..2 * gchunk_len]);
             write_numbers_2(&mut wr, max_bits, &numbers[0..2 * gchunk_len])?;
         }
     }
