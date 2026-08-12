@@ -2,6 +2,8 @@ use gate_calc_log_bits::calc_log_bits;
 use gatesim::{Circuit, Gate, GateFunc};
 use std::ops::{BitAnd, BitOr, Shl, Shr};
 
+pub use gatesim;
+
 // LE128 - encoding:
 //
 // Unsigned integer encoding (LEB128):
