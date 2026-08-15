@@ -169,7 +169,7 @@ impl<W: Write> BinWriter<W> {
     pub fn write(&mut self, value: bool) -> io::Result<()> {
         self.byte |= u8::from(value) << self.bits;
         if self.bits == 7 {
-            self.writer.as_mut().unwrap().write(&[self.byte])?;
+            self.writer.as_mut().unwrap().write_all(&[self.byte])?;
             self.byte = 0;
             self.bits = 0;
         } else {
@@ -570,7 +570,7 @@ where
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: Debug,
 {
-    wr.write(&[0x47, 0x41, 0x54, 0x42, 0x00])?;
+    wr.write_all(&[0x47, 0x41, 0x54, 0x42, 0x00])?;
     write_circuit_int(wr, circuit)
 }
 
@@ -770,7 +770,7 @@ where
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: Debug,
 {
-    wr.write(&[0x47, 0x41, 0x54, 0x42, 0x01])?;
+    wr.write_all(&[0x47, 0x41, 0x54, 0x42, 0x01])?;
     write_fast_circuit_int(wr, circuit)
 }
 
