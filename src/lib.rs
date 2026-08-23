@@ -1003,6 +1003,7 @@ mod tests {
             vec![43 | 128, 101 | 128, 69],
             write_enc_usize_helper(43 | (101 << 7) | (69 << 14))
         );
+        #[cfg(target_pointer_width = "64")]
         assert_eq!(
             vec![77 | 128, 128, 56 | 128, 128, 114 | 128, 9],
             write_enc_usize_helper(
