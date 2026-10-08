@@ -6,7 +6,7 @@ description = "The Gate binary format"
 
 [dependencies]
 gate_calc_log_bits = "0.1.0"
-gatesim = "0.1.1"
+gatesim = "0.1.2"
 thiserror = "1.0"
 
 [dev-dependencies]
