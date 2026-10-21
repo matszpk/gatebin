@@ -1,4 +1,7 @@
 //! The library provides binary format for the Gate circuits.
+//! It provides set of internal functions to implement other circuit types and main functions
+//! read and writes the Gate circuits. It provides slow format and fast format with
+//! fixed gate argument encoding.
 
 use gate_calc_log_bits::calc_log_bits;
 use gatesim::{Circuit, Gate, GateFunc};
