@@ -3,6 +3,10 @@ name = "gatebin"
 version = "0.1.0"
 edition = "2024"
 description = "The Gate binary format"
+repository = "https://github.com/matszpk/gatebin"
+documentation = "https://docs.rs/gatebin"
+keywords = ["gate", "logic", "circuit"]
+categories = ["science", "mathematics"]
 
 [dependencies]
 gate_calc_log_bits = "0.1.0"

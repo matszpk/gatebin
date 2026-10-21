@@ -1,3 +1,5 @@
+//! The library provides binary format for the Gate circuits.
+
 use gate_calc_log_bits::calc_log_bits;
 use gatesim::{Circuit, Gate, GateFunc};
 use std::ops::{BitAnd, BitOr, Shl, Shr};
@@ -41,6 +43,7 @@ use std::io::{self, Read, Write};
 pub mod ionum;
 use ionum::*;
 
+/// The BinReader structure.
 #[derive(Debug)]
 pub struct BinReader<R: Read> {
     reader: R,
@@ -56,6 +59,7 @@ fn bitmask_u8(bits: u8) -> u8 {
 // binary read and write
 
 impl<R: Read> BinReader<R> {
+    /// Creates new BinReader.
     pub fn new(reader: R) -> Self {
         Self {
             reader,
@@ -64,6 +68,7 @@ impl<R: Read> BinReader<R> {
         }
     }
 
+    /// It reads single bit.
     pub fn read(&mut self) -> io::Result<bool> {
         if self.bits == 0 {
             let mut b = [0u8];
@@ -78,6 +83,7 @@ impl<R: Read> BinReader<R> {
         Ok(v)
     }
 
+    /// It read bits (maximal numbers is 128).
     pub fn read_bits(&mut self, bits: u8) -> io::Result<u128> {
         if bits == 0 {
             return Ok(0);
@@ -129,6 +135,7 @@ impl<R: Read> BinReader<R> {
         }
     }
 
+    /// It unread bits.
     pub fn unread_bits(&self) -> u8 {
         if self.bits != 0 {
             self.byte >> self.bits
@@ -137,11 +144,13 @@ impl<R: Read> BinReader<R> {
         }
     }
 
+    /// To inner reader.
     pub fn inner(self) -> io::Result<R> {
         Ok(self.reader)
     }
 }
 
+/// The BinWriter structure.
 #[derive(Debug)]
 pub struct BinWriter<W: Write> {
     writer: Option<W>,
@@ -149,16 +158,10 @@ pub struct BinWriter<W: Write> {
     byte: u8,
 }
 
-pub const BIN_WRITER_BUF_LEN: usize = 1024;
-
 impl<W: Write> BinWriter<W> {
+    /// Creates new BinWriter.
     #[inline]
     pub fn new(writer: W) -> Self {
-        Self::new_with_buffer_len(writer, BIN_WRITER_BUF_LEN)
-    }
-
-    pub fn new_with_buffer_len(writer: W, buflen: usize) -> Self {
-        assert_ne!(buflen, 0);
         Self {
             writer: Some(writer),
             bits: 0,
@@ -166,6 +169,7 @@ impl<W: Write> BinWriter<W> {
         }
     }
 
+    /// It writes single bit.
     pub fn write(&mut self, value: bool) -> io::Result<()> {
         self.byte |= u8::from(value) << self.bits;
         if self.bits == 7 {
@@ -178,6 +182,7 @@ impl<W: Write> BinWriter<W> {
         Ok(())
     }
 
+    /// It writes bits (maximal value is 128).
     pub fn write_bits(&mut self, bits: u8, value: u128) -> io::Result<()> {
         if bits == 0 {
             return Ok(());
@@ -217,6 +222,7 @@ impl<W: Write> BinWriter<W> {
         Ok(())
     }
 
+    /// It flushes BinWriter.
     pub fn flush(&mut self) -> io::Result<()> {
         if self.bits != 0 {
             if let Some(w) = self.writer.as_mut() {
@@ -229,6 +235,7 @@ impl<W: Write> BinWriter<W> {
         Ok(())
     }
 
+    /// To inner writer.
     pub fn inner(mut self) -> io::Result<W> {
         self.flush()?;
         Ok(self.writer.take().unwrap())
@@ -243,6 +250,7 @@ impl<W: Write> Drop for BinWriter<W> {
 
 // other read writes
 
+/// Error enumeration.
 #[derive(Debug, thiserror::Error)]
 pub enum ReadEncIntError {
     #[error("IO: {0}")]
@@ -251,6 +259,7 @@ pub enum ReadEncIntError {
     PosOverflow,
 }
 
+/// Reads usize value in LE128 format.
 pub fn read_enc_usize<R: Read>(mut rd: R) -> Result<usize, ReadEncIntError> {
     const UBITS: u32 = usize::BITS;
     let mut d = 0;
@@ -279,6 +288,7 @@ pub fn read_enc_usize<R: Read>(mut rd: R) -> Result<usize, ReadEncIntError> {
     Ok(d)
 }
 
+/// Writes usize value in LE128 format.
 pub fn write_enc_usize<W: Write>(mut wr: W, value: usize) -> Result<(), io::Error> {
     let mut d = value;
     let mut b = [0u8; 10];
@@ -297,6 +307,7 @@ pub fn write_enc_usize<W: Write>(mut wr: W, value: usize) -> Result<(), io::Erro
     wr.write_all(&b[0..len])
 }
 
+/// Reads 64-bit value in LE128 format.
 pub fn read_enc_u64<R: Read>(mut rd: R) -> Result<u64, ReadEncIntError> {
     const UBITS: u32 = u64::BITS;
     let mut d = 0;
@@ -325,6 +336,7 @@ pub fn read_enc_u64<R: Read>(mut rd: R) -> Result<u64, ReadEncIntError> {
     Ok(d)
 }
 
+/// Writes 64-bit value in LE128 format.
 pub fn write_enc_u64<W: Write>(mut wr: W, value: u64) -> Result<(), io::Error> {
     let mut d = value;
     let mut b = [0u8; 10];
@@ -345,6 +357,7 @@ pub fn write_enc_u64<W: Write>(mut wr: W, value: u64) -> Result<(), io::Error> {
 
 // cut read enc usize
 
+/// Reads usize value in LE128 format cut to max_bits.
 pub fn read_cut_enc_usize<R: Read>(
     rd: &mut BinReader<R>,
     max_bits: u8,
@@ -371,6 +384,7 @@ pub fn read_cut_enc_usize<R: Read>(
     Ok(d)
 }
 
+/// Writes usize value in LE128 format cut to max_bits.
 pub fn write_cut_enc_usize<W: Write>(
     wr: &mut BinWriter<W>,
     value: usize,
@@ -406,6 +420,7 @@ pub fn write_cut_enc_usize<W: Write>(
 
 //
 
+/// Read circuit error enumeration.
 #[derive(Debug, thiserror::Error)]
 pub enum ReadCircuitError {
     #[error("IO {0}")]
@@ -418,6 +433,7 @@ pub enum ReadCircuitError {
     Verify,
 }
 
+/// Internal function to read circuit in slow format.
 pub fn read_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
@@ -483,6 +499,7 @@ where
     Circuit::new(input_len, gates, outputs).ok_or(ReadCircuitError::Verify)
 }
 
+/// Reads circuit in slow format.
 pub fn read_circuit<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
@@ -501,6 +518,7 @@ where
 
 //
 
+/// Internal function to write circuit in slow format.
 pub fn write_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
     T: Clone + Copy + Ord,
@@ -562,6 +580,7 @@ where
     Ok(())
 }
 
+/// Writes circuit in slow format.
 pub fn write_circuit<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
     T: Clone + Copy + Ord,
@@ -576,6 +595,7 @@ where
 
 //
 
+/// Converts numbers to gate arguments.
 pub fn numbers_to_gates<T: Clone + Copy>(numbers: &[T], out: &mut [Gate<T>]) {
     assert_eq!(numbers.len(), out.len().checked_mul(2).unwrap());
     for (nums, gate) in numbers.chunks(2).zip(out.iter_mut()) {
@@ -584,6 +604,7 @@ pub fn numbers_to_gates<T: Clone + Copy>(numbers: &[T], out: &mut [Gate<T>]) {
     }
 }
 
+/// Converts gate arguments to numbers.
 pub fn gates_to_numbers<T: Clone + Copy>(gates: &[Gate<T>], numbers: &mut [T]) {
     assert_eq!(numbers.len(), gates.len().checked_mul(2).unwrap());
     for (nums, gate) in numbers.chunks_mut(2).zip(gates.iter()) {
@@ -594,6 +615,7 @@ pub fn gates_to_numbers<T: Clone + Copy>(gates: &[Gate<T>], numbers: &mut [T]) {
 
 const GATE_BUF_LEN: usize = 8192;
 
+/// Internal function to read circuit in fast format.
 pub fn read_fast_circuit_int<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
@@ -662,6 +684,7 @@ where
     Circuit::new(input_len, gates, outputs).ok_or(ReadCircuitError::Verify)
 }
 
+/// Reads circuit in fast format.
 pub fn read_fast_circuit<T, R: Read>(mut rd: R) -> Result<Circuit<T>, ReadCircuitError>
 where
     T: Default + Clone + Copy + Ord,
@@ -685,6 +708,7 @@ where
 
 //
 
+/// Internal function to write circuit in fast format.
 pub fn write_fast_circuit_int<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
     T: Default + Clone + Copy + Ord,
@@ -753,6 +777,7 @@ where
     Ok(())
 }
 
+/// Writes circuit in fast format.
 pub fn write_fast_circuit<T, W: Write>(mut wr: W, circuit: &Circuit<T>) -> io::Result<()>
 where
     T: Default + Clone + Copy + Ord,

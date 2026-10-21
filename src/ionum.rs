@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::{BitAnd, BitOr, Shl, Shr};
 
+/// Reads numbers with specified num_bits bits.
 pub fn read_numbers_2<R: Read, T>(mut rd: R, num_bits: u8, out_numbers: &mut [T]) -> io::Result<()>
 where
     T: Clone
@@ -5129,6 +5130,7 @@ where
     Ok(())
 }
 
+/// Writes numbers with specified num_bits bits.
 pub fn write_numbers_2<W: Write, T>(mut wr: W, num_bits: u8, numbers: &[T]) -> io::Result<()>
 where
     T: Clone
