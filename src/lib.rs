@@ -37,7 +37,7 @@ pub use gatesim;
 //   wire index of current gate.
 //   Length aligned to byte.
 // Output wires entries. Wire index stored as LEB128 in same format like in Gate wires entries.
-//   Wire index stored as total_wire_num - 1 - wire_index, where total_wire_num is
+//   Wire index stored as total_wires_num - 1 - wire_index, where total_wires_num is
 //   total number of wires including gates.
 
 use std::fmt::Debug;
@@ -491,10 +491,10 @@ where
     let rd = binrd.inner()?;
     // read output wires
     let mut binrd = BinReader::new(rd);
-    let total_wire_num = input_len_u + circuit_len_u;
-    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    let total_wires_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wires_num)).unwrap();
     for (o, _n) in outputs.iter_mut() {
-        let o_u = total_wire_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
+        let o_u = total_wires_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
         *o = T::try_from(o_u).unwrap();
     }
     binrd.inner()?;
@@ -573,11 +573,11 @@ where
     let wr = binwr.inner()?;
     // write outputs wire indices
     let mut binwr = BinWriter::new(wr);
-    let total_wire_num = input_len_u + circuit_len_u;
-    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    let total_wires_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wires_num)).unwrap();
     for (o, _) in circuit.outputs() {
         let o_u = usize::try_from(*o).unwrap();
-        write_cut_enc_usize(&mut binwr, total_wire_num - o_u - 1, max_bits)?;
+        write_cut_enc_usize(&mut binwr, total_wires_num - o_u - 1, max_bits)?;
     }
     binwr.inner()?;
     Ok(())
@@ -666,8 +666,8 @@ where
     }
     let mut rd = binrd.inner()?;
     // read gate wires
-    let total_wire_num = input_len_u + circuit_len_u;
-    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    let total_wires_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wires_num)).unwrap();
     {
         let mut numbers = vec![T::default(); 2 * GATE_BUF_LEN];
         for gchunk in gates.chunks_mut(GATE_BUF_LEN) {
@@ -679,7 +679,7 @@ where
     // read output wires
     let mut binrd = BinReader::new(rd);
     for (o, _n) in outputs.iter_mut() {
-        let o_u = total_wire_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
+        let o_u = total_wires_num - read_cut_enc_usize(&mut binrd, max_bits)? - 1;
         *o = T::try_from(o_u).unwrap();
     }
     binrd.inner()?;
@@ -758,8 +758,8 @@ where
             .fold(0u128, |a, (oi, (_, n))| a | (u128::from(*n) << oi));
         binwr.write_bits(u8::try_from(ochunk.len()).unwrap(), nvalue)?;
     }
-    let total_wire_num = input_len_u + circuit_len_u;
-    let max_bits = u8::try_from(calc_log_bits(total_wire_num)).unwrap();
+    let total_wires_num = input_len_u + circuit_len_u;
+    let max_bits = u8::try_from(calc_log_bits(total_wires_num)).unwrap();
     let mut wr = binwr.inner()?;
     // write gate wires (arguments)
     {
@@ -774,7 +774,7 @@ where
     let mut binwr = BinWriter::new(wr);
     for (o, _) in circuit.outputs() {
         let o_u = usize::try_from(*o).unwrap();
-        write_cut_enc_usize(&mut binwr, total_wire_num - o_u - 1, max_bits)?;
+        write_cut_enc_usize(&mut binwr, total_wires_num - o_u - 1, max_bits)?;
     }
     binwr.inner()?;
     Ok(())
